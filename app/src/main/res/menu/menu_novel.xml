@@ -34,6 +34,10 @@
         android:title="@string/novel_line_space"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_novel_save_txt"
+        android:title="@string/novel_save_txt"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_novel_share"
         android:icon="@drawable/ic_action_share"
         android:title="@string/share"

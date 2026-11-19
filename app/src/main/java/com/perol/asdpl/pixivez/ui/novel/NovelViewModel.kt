@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 
 // 阅读页数据:详情(标题/作者/标签/收藏态)+ 正文(webview HTML 抽 JSON)
 class NovelViewModel : BaseViewModel() {
+    var pendingExport: NovelTextExport? = null
     val novel = MutableLiveData<Novel?>()
     val web = MutableLiveData<NovelWebResponse?>()
     // 正文分块结果(图文混排,见 NovelMarkup.chunkNovel),Default 线程算完再回主线程
@@ -99,14 +100,3 @@ fun parseWebNovel(html: String): NovelWebResponse? {
     val json = NOVEL_JSON.find(html)?.groupValues?.getOrNull(1) ?: return null
     return gson.decodeFromString<NovelWebResponse>(json)
 }
-
-// pixiv 正文自有标记 → 纯文本(导出/纯文字场景用;阅读页走 NovelMarkup 图文管线)
-fun renderNovelText(raw: String): String =
-    raw
-        .replace(Regex("""\[newpage\]"""), "\n\n")
-        .replace(Regex("""\[chapter:(.*?)\]"""), "\n$1\n")
-        .replace(Regex("""\[\[rb:(.*?)>(.*?)\]\]"""), "$1($2)")
-        .replace(Regex("""\[\[jumpuri:(.*?)>.*?\]\]"""), "$1")
-        .replace(Regex("""\[pixivimage:[^\]]*\]"""), "")
-        .replace(Regex("""\[uploadedimage:[^\]]*\]"""), "")
-        .replace(Regex("""\[jump:[^\]]*\]"""), "")

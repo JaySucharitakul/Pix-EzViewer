@@ -340,4 +340,8 @@
     <string name="browser">Browser</string>
     <string name="novel_body_load_failed">Could not load the novel text. Please retry.</string>
     <string name="novel_retry">Retry</string>
+    <string name="novel_save_txt">Save as TXT</string>
+    <string name="novel_export_saved">Novel saved</string>
+    <string name="novel_export_failed">Could not save the novel. Please try again.</string>
+    <string name="novel_export_picker_unavailable">No file picker is available.</string>
 </resources>

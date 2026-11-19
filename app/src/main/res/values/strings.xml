@@ -377,4 +377,8 @@
     <string name="switch_to_illust">切换到插画模式</string>
     <string name="novel_body_load_failed">正文加载失败，请重试</string>
     <string name="novel_retry">重试</string>
+    <string name="novel_save_txt">保存为 TXT</string>
+    <string name="novel_export_saved">小说已保存</string>
+    <string name="novel_export_failed">无法保存小说，请重试</string>
+    <string name="novel_export_picker_unavailable">没有可用的文件选择器</string>
 </resources>

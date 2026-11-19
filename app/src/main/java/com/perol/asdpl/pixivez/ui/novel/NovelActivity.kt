@@ -1,9 +1,11 @@
 package com.perol.asdpl.pixivez.ui.novel
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import android.text.Layout
 import android.text.SpannableStringBuilder
@@ -18,8 +20,11 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.text.HtmlCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
@@ -35,9 +40,14 @@ import com.perol.asdpl.pixivez.databinding.ActivityNovelBinding
 import com.perol.asdpl.pixivez.databinding.ViewNovelChunkBinding
 import com.perol.asdpl.pixivez.databinding.ViewNovelHeaderBinding
 import com.perol.asdpl.pixivez.databinding.ViewNovelImageBinding
+import com.perol.asdpl.pixivez.objects.CrashHandler
 import com.perol.asdpl.pixivez.services.PxEZApp
 import com.perol.asdpl.pixivez.ui.pic.PictureActivity
 import com.perol.asdpl.pixivez.ui.user.UserMActivity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // 小说阅读页:头部(标题/作者/标签)+ 图文分块正文(标记渲染见 NovelMarkup),
 // 字号记忆、收藏 toggle、系列上/下一篇
@@ -49,6 +59,17 @@ class NovelActivity : RinkActivity() {
     private var prev: NovelNaviItem? = null
     private var next: NovelNaviItem? = null
     private var textSize: Float = DEFAULT_TEXT_SIZE
+
+    private val createTextDocument = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        val export = viewModel.pendingExport
+        viewModel.pendingExport = null
+        if (uri != null) {
+            if (export != null) saveTextDocument(uri, export)
+            else Toast.makeText(this, R.string.novel_export_failed, Toast.LENGTH_LONG).show()
+        }
+    }
 
     // 进度恢复只在首次数据就绪时执行一次
     private var progressRestored = false
@@ -94,6 +115,7 @@ class NovelActivity : RinkActivity() {
         viewModel.bodyLoading.observe(this) { loading ->
             binding.novelLoading.visibility = if (loading) View.VISIBLE else View.GONE
             binding.novelRetry.isEnabled = !loading
+            invalidateOptionsMenu()
         }
         viewModel.bodyFailed.observe(this) { failed ->
             binding.novelBodyError.visibility = if (failed) View.VISIBLE else View.GONE
@@ -101,6 +123,7 @@ class NovelActivity : RinkActivity() {
         viewModel.novel.observe(this) {
             adapter.novel = it
             adapter.notifyItemChanged(0)
+            invalidateOptionsMenu()
         }
         viewModel.bookmarked.observe(this) { invalidateOptionsMenu() }
         viewModel.chunks.observe(this) {
@@ -141,6 +164,9 @@ class NovelActivity : RinkActivity() {
             if (viewModel.bookmarked.value == true) 255 else 90
         menu.findItem(R.id.action_novel_prev).isVisible = prev != null
         menu.findItem(R.id.action_novel_next).isVisible = next != null
+        menu.findItem(R.id.action_novel_save_txt).isEnabled =
+            viewModel.novel.value != null && !viewModel.web.value?.text.isNullOrBlank() &&
+                viewModel.bodyLoading.value != true
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -182,6 +208,7 @@ class NovelActivity : RinkActivity() {
                     }.show()
             }
             R.id.action_novel_share -> share()
+            R.id.action_novel_save_txt -> exportText()
             else -> return super.onOptionsItemSelected(item)
         }
         return true
@@ -206,6 +233,42 @@ class NovelActivity : RinkActivity() {
         if (!item.viewable) return
         start(this, item.id)
         finish()
+    }
+
+    private fun exportText() {
+        val novel = viewModel.novel.value ?: return
+        val body = viewModel.web.value?.text?.takeIf { it.isNotBlank() } ?: return
+        if (viewModel.bodyLoading.value == true) return
+        // Keep the source snapshot in the ViewModel while the picker is open,
+        // including across configuration changes. Render large novels off the UI thread.
+        val export = NovelTextExport(novelId, novel.title, novel.user.name, body)
+        viewModel.pendingExport = export
+        try {
+            createTextDocument.launch(export.fileName)
+        } catch (e: ActivityNotFoundException) {
+            viewModel.pendingExport = null
+            Toast.makeText(this, R.string.novel_export_picker_unavailable, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun saveTextDocument(uri: Uri, export: NovelTextExport) {
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val text = export.render()
+                    val stream = checkNotNull(contentResolver.openOutputStream(uri, "wt")) {
+                        "Cannot open novel export destination"
+                    }
+                    stream.bufferedWriter(Charsets.UTF_8).use { it.write(text) }
+                }
+                Toast.makeText(this@NovelActivity, R.string.novel_export_saved, Toast.LENGTH_SHORT).show()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                CrashHandler.instance.e("novel", "export $novelId failed", e)
+                Toast.makeText(this@NovelActivity, R.string.novel_export_failed, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun share() {
